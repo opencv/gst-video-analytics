@@ -352,15 +352,28 @@ def set_callback(pipeline):
         pad.add_probe(Gst.PadProbeType.BUFFER, pad_probe_callback)
 
 
+def create_launch_string(args):
+    if "/dev/video" in args.input:
+        source = "v4l2src device"
+    elif "://" in args.input:
+        source = "urisourcebin buffer-size=4096 uri"
+    else:
+        source = "filesrc location"
+
+    return "{}={} ! decodebin ! \
+    videoconvert n-threads=4 ! capsfilter caps=\"video/x-raw,format=BGRx\" ! \
+    gvadetect model={} device=CPU batch-size=1 ! queue ! \
+    gvainference name=gvainference model={} ! queue ! \
+    gvawatermark name=gvawatermark ! videoconvert n-threads=4 ! \
+    fpsdisplaysink video-sink=xvimagesink sync=false".format(source, args.input, args.detection_model,
+                                                             args.estimation_model)
+
+
 def main():
     Gst.init(sys.argv)
     args = parser.parse_args()
     # build pipeline using parse_launch
-    pipeline_str = "filesrc location={} ! decodebin ! videoconvert ! video/x-raw,format=BGRx ! " \
-                   "gvadetect model={} ! queue ! " \
-                   "gvainference name=gvainference model={} ! queue ! " \
-                   "gvawatermark name=gvawatermark ! videoconvert ! fpsdisplaysink video-sink=xvimagesink sync=false".format(
-        args.input, args.detection_model, args.estimation_model)
+    pipeline_str = create_launch_string(args)
     pipeline = Gst.parse_launch(pipeline_str)
     # set callback
     set_callback(pipeline)
