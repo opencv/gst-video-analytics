@@ -622,7 +622,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-
     libva-dev libxrandr-dev libudev-dev \
     \
     && rm -rf /var/lib/apt/lists/* \
-    && python3.6 -m pip install numpy opencv-python pytest
+    && python3.6 -m pip install --upgrade pip && python3.6 -m pip install numpy opencv-python pytest
 
 # Install
 COPY --from=dldt-build /home/build /
