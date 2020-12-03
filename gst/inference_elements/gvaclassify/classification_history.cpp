@@ -16,7 +16,9 @@ ClassificationHistory::ClassificationHistory(GstGvaClassify *gva_classify)
     : gva_classify(gva_classify), current_num_frame(0), history(CLASSIFICATION_HISTORY_SIZE) {
 }
 
-bool ClassificationHistory::IsROIClassificationNeeded(GstVideoRegionOfInterestMeta *roi, uint64_t current_num_frame) {
+bool ClassificationHistory::IsROIClassificationNeeded(GstBuffer *buffer,
+                                                      GstVideoRegionOfInterestMeta *roi,
+                                                      uint64_t current_num_frame) {
     try {
         std::lock_guard<std::mutex> guard(history_mutex);
         this->current_num_frame = current_num_frame;
@@ -27,8 +29,11 @@ bool ClassificationHistory::IsROIClassificationNeeded(GstVideoRegionOfInterestMe
         gint id;
         if (!get_object_id(roi, &id))
             // object has not been tracked
-            return true;
+            return IsROIClassificationNeededDueToMeta(buffer, roi);
         if (history.count(id) == 0) { // new object
+            if (!IsROIClassificationNeededDueToMeta(buffer, roi))
+                return false;
+
             history.put(id);
             history.get(id).frame_of_last_update = current_num_frame;
             result = true;
@@ -40,6 +45,9 @@ bool ClassificationHistory::IsROIClassificationNeeded(GstVideoRegionOfInterestMe
                 current_interval = (UINT64_MAX - history.get(id).frame_of_last_update) + current_num_frame + 1;
             if (current_interval >= gva_classify->reclassify_interval) {
                 // new object or reclassify old object
+                if (!IsROIClassificationNeededDueToMeta(buffer, roi))
+                    return false;
+
                 history.get(id).frame_of_last_update = current_num_frame;
                 result = true;
             }
@@ -49,6 +57,21 @@ bool ClassificationHistory::IsROIClassificationNeeded(GstVideoRegionOfInterestMe
     } catch (const std::exception &e) {
         std::throw_with_nested(std::runtime_error("Failed to check if detection tensor classification needed"));
     }
+}
+
+bool ClassificationHistory::IsROIClassificationNeededDueToMeta(GstBuffer *buffer,
+                                                               const GstVideoRegionOfInterestMeta *roi) const {
+    // If the classify signal is not enabled, then a subscriber will not be
+    // able to decide if classfication should be skipped.
+    if (!gva_classify->signal_classify_roi) {
+        return true;
+    }
+
+    // Ask subsciber if classification of this ROI should be skipped
+    gboolean skip = FALSE;
+    g_signal_emit(gva_classify, gva_classify->signal_classify_roi_id, 0, buffer, roi, &skip);
+
+    return !skip;
 }
 
 void ClassificationHistory::UpdateROIParams(int roi_id, const GstStructure *roi_param) {

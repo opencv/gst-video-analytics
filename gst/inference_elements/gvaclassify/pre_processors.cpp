@@ -25,7 +25,7 @@ namespace {
 using namespace InferenceBackend;
 
 bool IsROIClassificationNeeded(GvaBaseInference *gva_base_inference, guint64 current_num_frame,
-                               GstBuffer * /* *buffer*/, GstVideoRegionOfInterestMeta *roi) {
+                               GstBuffer *buffer, GstVideoRegionOfInterestMeta *roi) {
     GstGvaClassify *gva_classify = (GstGvaClassify *)gva_base_inference;
 
     // Check is object-class same with roi type
@@ -45,10 +45,15 @@ bool IsROIClassificationNeeded(GvaBaseInference *gva_base_inference, guint64 cur
         }
     }
 
-    // Check is object recently classified
     assert(gva_classify->classification_history != NULL);
-    return (gva_classify->reclassify_interval == 1 ||
-            gva_classify->classification_history->IsROIClassificationNeeded(roi, current_num_frame));
+    // If reclassification is possible on every interval, check the metadata to see
+    // if classification of this ROI should be skipped.
+    if (gva_classify->reclassify_interval == 1) {
+        return gva_classify->classification_history->IsROIClassificationNeededDueToMeta(buffer, roi);
+    }
+
+    // Check is object recently classified
+    return (gva_classify->classification_history->IsROIClassificationNeeded(buffer, roi, current_num_frame));
 }
 
 } // anonymous namespace

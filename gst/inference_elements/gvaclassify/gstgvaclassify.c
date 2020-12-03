@@ -17,14 +17,22 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
+#include <gst/video/gstvideometa.h>
 
 #define ELEMENT_LONG_NAME "Object classification (requires GstVideoRegionOfInterestMeta on input)"
 #define ELEMENT_DESCRIPTION ELEMENT_LONG_NAME
+#define DEFAULT_SIGNAL_CLASSIFY_ROI FALSE
 
 enum {
     PROP_0,
     PROP_OBJECT_CLASS,
     PROP_RECLASSIFY_INTERVAL,
+    PROP_SIGNAL_CLASSIFY_ROI,
+};
+
+enum {
+    SIGNAL_CLASSIFY_ROI,
+    LAST_SIGNAL
 };
 
 #define DEFAULT_OBJECT_CLASS ""
@@ -45,6 +53,8 @@ static GstPadProbeReturn FillROIParamsCallback(GstPad *pad, GstPadProbeInfo *inf
 static void gst_gva_classify_finalize(GObject *);
 static void gst_gva_classify_cleanup(GstGvaClassify *);
 static void on_base_inference_initialized(GvaBaseInference *base_inference);
+
+static guint gst_classify_signals[LAST_SIGNAL] = { 0 };
 
 void gst_gva_classify_set_property(GObject *object, guint property_id, const GValue *value, GParamSpec *pspec) {
     GstGvaClassify *gvaclassify = (GstGvaClassify *)(object);
@@ -75,6 +85,10 @@ void gst_gva_classify_set_property(GObject *object, guint property_id, const GVa
         }
         break;
     }
+    case PROP_SIGNAL_CLASSIFY_ROI: {
+        gvaclassify->signal_classify_roi = g_value_get_boolean(value);
+        break;
+    }
     default: {
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
         break;
@@ -93,6 +107,9 @@ void gst_gva_classify_get_property(GObject *object, guint property_id, GValue *v
         break;
     case PROP_RECLASSIFY_INTERVAL:
         g_value_set_uint(value, gvaclassify->reclassify_interval);
+        break;
+    case PROP_SIGNAL_CLASSIFY_ROI:
+        g_value_set_boolean(value, gvaclassify->signal_classify_roi);
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -138,6 +155,32 @@ void gst_gva_classify_class_init(GstGvaClassifyClass *gvaclassify_class) {
             "inference interval)",
             DEFAULT_MIN_RECLASSIFY_INTERVAL, DEFAULT_MAX_RECLASSIFY_INTERVAL, DEFAULT_RECLASSIFY_INTERVAL,
             (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+    // Property that determines whether or not the "classify-roi" signal
+    // should be raised before classifying a tracked object.
+    g_object_class_install_property(
+        gobject_class, PROP_SIGNAL_CLASSIFY_ROI,
+        g_param_spec_boolean(
+            "signal-classify-roi", "Signal Classify ROI",
+            "Send a signal before classifying a tracked object.",
+            DEFAULT_SIGNAL_CLASSIFY_ROI, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+    // Signal which indicates to a subscriber that classification of the ROI is
+    // about to occur and allows the subscriber to request that classification
+    // be skipped due to some aspect of the ROI's metadata or the frame (buffer)
+    // that contains the ROI.
+    // Return value:
+    //  FALSE - classification should be run.
+    //  TRUE  - classification should be skipped
+    // Note: g_signal_emit resets the return value to the default, in this
+    // case FALSE, when a handler is not connected.
+    gst_classify_signals[SIGNAL_CLASSIFY_ROI] =
+        g_signal_new(
+            "classify-roi", G_TYPE_FROM_CLASS (gvaclassify_class),
+             G_SIGNAL_RUN_LAST, G_STRUCT_OFFSET (GstGvaClassifyClass, classify_roi),
+             NULL, NULL, NULL, G_TYPE_BOOLEAN, 2,
+             GST_TYPE_BUFFER | G_SIGNAL_TYPE_STATIC_SCOPE,
+             GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE | G_SIGNAL_TYPE_STATIC_SCOPE);
 }
 
 void gst_gva_classify_init(GstGvaClassify *gvaclassify) {
@@ -151,6 +194,7 @@ void gst_gva_classify_init(GstGvaClassify *gvaclassify) {
     gvaclassify->base_inference.is_full_frame = FALSE;
     gvaclassify->object_class = g_strdup(DEFAULT_OBJECT_CLASS);
     gvaclassify->reclassify_interval = DEFAULT_RECLASSIFY_INTERVAL;
+    gvaclassify->signal_classify_roi_id = gst_classify_signals[SIGNAL_CLASSIFY_ROI];
     gvaclassify->classification_history = create_classification_history(gvaclassify);
     if (gvaclassify->classification_history == NULL)
         return;

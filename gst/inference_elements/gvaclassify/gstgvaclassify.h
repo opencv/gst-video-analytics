@@ -23,12 +23,19 @@ typedef struct _GstGvaClassify {
     // properties:
     gchar *object_class;
     guint reclassify_interval;
+    gboolean signal_classify_roi;
+
+    // Signals
+    guint signal_classify_roi_id;
 
     struct ClassificationHistory *classification_history;
 } GstGvaClassify;
 
 typedef struct _GstGvaClassifyClass {
     GvaBaseInferenceClass base_class;
+
+    // Declare class handler so that sub-classes have the ability to override it.
+    gboolean (*classify_roi) (GstElement *element, GstBuffer *buf, GstVideoRegionOfInterestMeta *roi);
 } GstGvaClassifyClass;
 
 GType gst_gva_classify_get_type(void);
