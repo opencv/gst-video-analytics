@@ -1,0 +1,12 @@
+digraph "Graphical Class Hierarchy"
+{
+ // LATEX_PDF_SIZE
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  rankdir="LR";
+  Node15 [label="Enum",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled",tooltip=" "];
+  Node15 -> Node0 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node0 [label="gstgva.tensor.Tensor.LAYOUT",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classgstgva_1_1tensor_1_1Tensor_1_1LAYOUT.html",tooltip="This enum describes model layer layout."];
+  Node15 -> Node17 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node17 [label="gstgva.tensor.Tensor.PRECISION",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classgstgva_1_1tensor_1_1Tensor_1_1PRECISION.html",tooltip="This enum describes model layer precision."];
+}
