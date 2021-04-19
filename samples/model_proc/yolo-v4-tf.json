@@ -40,7 +40,8 @@
         2
       ],
       "bbox_number_on_cell": 3,
-      "cells_number": 19,
+      "cells_number_x": 19,
+      "cells_number_y": 19,
       "labels": [
         "person",
         "bicycle",

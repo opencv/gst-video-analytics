@@ -17,7 +17,8 @@ using namespace DetectionPlugin;
 using namespace Converters;
 
 size_t getClassesNum(const GstStructure *s);
-size_t getCellsNumber(const GstStructure *s);
+size_t getCellsNumberX(const GstStructure *s);
+size_t getCellsNumberY(const GstStructure *s);
 double getIOUThreshold(const GstStructure *s);
 size_t getBboxNumberOnCell(const GstStructure *s);
 bool getDoClsSoftmax(const GstStructure *s);
@@ -31,7 +32,8 @@ YOLOConverter *YOLOConverter::makeYOLOConverter(const std::string &converter_typ
     const auto classes_number = getClassesNum(output_model_proc_info);
     const auto anchors = getAnchors(output_model_proc_info);
     const auto iou_threshold = getIOUThreshold(output_model_proc_info);
-    const auto cells_number = getCellsNumber(output_model_proc_info);
+    const auto cells_number_x = getCellsNumberX(output_model_proc_info);
+    const auto cells_number_y = getCellsNumberY(output_model_proc_info);
     const auto do_cls_softmax = getDoClsSoftmax(output_model_proc_info);
     const auto output_sigmoid_activation = getOutputSigmoidActivation(output_model_proc_info);
     auto bbox_number_on_cell = getBboxNumberOnCell(output_model_proc_info);
@@ -39,19 +41,19 @@ YOLOConverter *YOLOConverter::makeYOLOConverter(const std::string &converter_typ
     if (converter_type == "tensor_to_bbox_yolo_v2") {
         if (!bbox_number_on_cell)
             bbox_number_on_cell = 5;
-        return new YOLOV2Converter(classes_number, anchors, cells_number, cells_number, iou_threshold,
+        return new YOLOV2Converter(classes_number, anchors, cells_number_x, cells_number_y, iou_threshold,
                                    bbox_number_on_cell, do_cls_softmax, output_sigmoid_activation);
     }
     if (converter_type == "tensor_to_bbox_yolo_v3") {
         if (!bbox_number_on_cell)
             bbox_number_on_cell = 3;
-        const auto masks = getMask(output_model_proc_info, bbox_number_on_cell, cells_number);
-        if (input_info.width / 32 != cells_number) {
+        const auto masks = getMask(output_model_proc_info, bbox_number_on_cell, cells_number_y);
+        if (input_info.width / 32 != cells_number_x || input_info.height / 32 != cells_number_y) {
             GST_WARNING("The size of the input layer of the model does not match the specified number of cells. Verify "
-                        "your \"cells_number\" field in model_proc.");
+                        "your \"cells_number_x\" and \"cells_number_y\" field in model_proc.");
         }
-        return new YOLOV3Converter(classes_number, anchors, masks, cells_number, cells_number, iou_threshold,
-                                   bbox_number_on_cell, input_info.width, do_cls_softmax, output_sigmoid_activation);
+        return new YOLOV3Converter(classes_number, anchors, masks, cells_number_x, cells_number_y, iou_threshold,
+                                   bbox_number_on_cell, input_info.height, input_info.width, do_cls_softmax, output_sigmoid_activation);
     }
     return nullptr;
 }
@@ -118,12 +120,12 @@ std::vector<float> getAnchors(const GstStructure *s) {
     return anchors;
 }
 
-std::map<size_t, std::vector<size_t>> getMask(const GstStructure *s, size_t bbox_number_on_cell, size_t cells_number) {
+std::map<size_t, std::vector<size_t>> getMask(const GstStructure *s, size_t bbox_number_on_cell, size_t cells_number_y) {
 
     if (!gst_structure_has_field(s, "masks"))
         throw std::runtime_error("model proc does not have \"masks\" parameter.");
     GValueArray *arr = NULL;
-    size_t side = cells_number;
+    size_t side = cells_number_y;
     gst_structure_get_array(const_cast<GstStructure *>(s), "masks", &arr);
     std::vector<size_t> masks;
     if (arr) {
@@ -159,13 +161,22 @@ size_t getClassesNum(const GstStructure *s) {
     return classes;
 }
 
-size_t getCellsNumber(const GstStructure *s) {
-    int cells_number = 13;
-    if (gst_structure_has_field(s, "cells_number")) {
-        gst_structure_get_int(s, "cells_number", &cells_number);
+size_t getCellsNumberX(const GstStructure *s) {
+    int cells_number_x = 13;
+    if (gst_structure_has_field(s, "cells_number_x")) {
+        gst_structure_get_int(s, "cells_number_x", &cells_number_x);
     }
 
-    return cells_number;
+    return cells_number_x;
+}
+
+size_t getCellsNumberY(const GstStructure *s) {
+    int cells_number_y = 13;
+    if (gst_structure_has_field(s, "cells_number_y")) {
+        gst_structure_get_int(s, "cells_number_y", &cells_number_y);
+    }
+
+    return cells_number_y;
 }
 
 size_t getBboxNumberOnCell(const GstStructure *s) {
